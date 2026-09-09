@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ghar-ghar",
+  "pages_build_output_dir": "dist",
+  "compatibility_date": "2026-09-09",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GAME_ROOMS",
+        "class_name": "GameRoom",
+        "script_name": "ghar-ghar-rendezvous"
+      }
+    ]
+  }
+}
