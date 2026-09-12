@@ -67,11 +67,12 @@ const server = http.createServer((req, res) => {
       const now = Date.now();
       // Purge rooms inactive for > 6 seconds
       for (const [id, room] of lanRooms.entries()) {
-        if (now - room.lastSeen > 6000) {
+          if (now - room.lastSeen > 15000) {
           lanRooms.delete(id);
         }
       }
-      return res.end(JSON.stringify({ rooms: Array.from(lanRooms.values()) }));
+      const activeRooms = Array.from(lanRooms.values()).filter(r => r.status !== 'in_progress');
+      return res.end(JSON.stringify({ rooms: activeRooms }));
     }
 
     if (req.method === 'POST') {
@@ -80,7 +81,7 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         try {
           const data = JSON.parse(body);
-          if (data.action === 'delete' && data.roomId) {
+          if ((data.action === 'delete' || data.status === 'in_progress') && data.roomId) {
             lanRooms.delete(String(data.roomId).trim().toUpperCase());
             return res.end(JSON.stringify({ success: true }));
           }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Player } from '../types/game';
-import { Sparkles, Bot, WifiOff } from 'lucide-react';
+import { Sparkles, Bot, WifiOff, Mic } from 'lucide-react';
+import { ClaimedHomeBadge } from './ClaimedHomeBadge';
 
 interface PlayerBarProps {
   players: Player[];
@@ -9,6 +10,7 @@ interface PlayerBarProps {
   totalBoxes: number;
   bonusTurnAwarded: boolean;
   darkMode?: boolean;
+  speakingPlayerIds?: Set<string>;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -17,7 +19,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   myPlayerId,
   totalBoxes,
   bonusTurnAwarded,
-  darkMode = false
+  darkMode = false,
+  speakingPlayerIds
 }) => {
   const activePlayer = players[currentTurnIndex];
   const isMyTurn = myPlayerId ? activePlayer?.id === myPlayerId : true;
@@ -64,38 +67,56 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         {players.map((player, idx) => {
           const isActive = idx === currentTurnIndex;
           const isMe = player.id === myPlayerId;
+          const isSpeaking = !!speakingPlayerIds?.has(player.id);
           const percentage = totalBoxes > 0 ? Math.round((player.score / totalBoxes) * 100) : 0;
 
           return (
             <div
               key={player.id}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all shrink-0 select-none m-0.5 ${
-                isActive
-                  ? darkMode
-                    ? 'bg-slate-800 shadow-md border-slate-500 ring-2 ring-offset-1 ring-offset-slate-900'
-                    : 'bg-white shadow-md border-slate-400 ring-2 ring-offset-1 ring-offset-white'
-                  : darkMode
-                    ? 'bg-slate-800/50 border-slate-700 opacity-80'
-                    : 'bg-paper-100/80 border-paper-200 opacity-80'
+                isSpeaking
+                  ? 'ring-2 ring-emerald-500 ring-offset-1 shadow-lg shadow-emerald-500/30 scale-102 ' +
+                    (darkMode ? 'bg-slate-800 border-emerald-500 ring-offset-slate-900' : 'bg-white border-emerald-500 ring-offset-white')
+                  : isActive
+                    ? darkMode
+                      ? 'bg-slate-800 shadow-md border-slate-500 ring-2 ring-offset-1 ring-offset-slate-900'
+                      : 'bg-white shadow-md border-slate-400 ring-2 ring-offset-1 ring-offset-white'
+                    : darkMode
+                      ? 'bg-slate-800/50 border-slate-700 opacity-80'
+                      : 'bg-paper-100/80 border-paper-200 opacity-80'
               }`}
               style={{
-                borderColor: isActive ? player.color : undefined,
-                boxShadow: isActive ? `0 4px 12px ${player.color}35` : undefined
+                borderColor: isSpeaking ? '#10b981' : isActive ? player.color : undefined,
+                boxShadow: isSpeaking
+                  ? '0 0 14px rgba(16, 185, 129, 0.4)'
+                  : isActive
+                    ? `0 4px 12px ${player.color}35`
+                    : undefined
               }}
             >
-              {/* Avatar Initial Badge */}
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center font-sketch text-xl font-bold text-white shadow-inner relative"
-                style={{ backgroundColor: player.color }}
-              >
-                {player.initial}
+              {/* Claimed Home Initial Badge */}
+              <div className="relative shrink-0">
+                <ClaimedHomeBadge
+                  initial={player.initial}
+                  color={player.color}
+                  darkMode={darkMode}
+                  sizeClass="w-8 h-8"
+                />
+                {isSpeaking && (
+                  <span
+                    className="absolute -top-1 -left-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md animate-pulse ring-2 ring-white dark:ring-slate-900"
+                    title="Speaking"
+                  >
+                    <Mic className="w-2.5 h-2.5" />
+                  </span>
+                )}
                 {player.isBot && (
-                  <span className={`absolute -top-1 -right-1 text-white rounded-full p-0.5 ${darkMode ? 'bg-slate-900' : 'bg-slate-800'}`} title="AI Bot">
+                  <span className={`absolute -top-1 -right-1 text-white rounded-full p-0.5 shadow-sm ${darkMode ? 'bg-slate-900' : 'bg-slate-800'}`} title="AI Bot">
                     <Bot className="w-2.5 h-2.5" />
                   </span>
                 )}
                 {player.connected === false && (
-                  <span className="absolute -bottom-1 -right-1 bg-red-600 text-white rounded-full p-0.5" title="Disconnected">
+                  <span className="absolute -bottom-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow-sm" title="Disconnected">
                     <WifiOff className="w-2.5 h-2.5" />
                   </span>
                 )}
@@ -103,12 +124,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
               {/* Player Details */}
               <div className="flex flex-col min-w-[70px]">
-                <div className="flex items-center gap-1">
-                  <span className={`text-xs font-bold truncate max-w-[90px] ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-xs font-bold truncate max-w-[90px] ${
+                    isSpeaking
+                      ? 'text-emerald-500 font-extrabold'
+                      : darkMode
+                        ? 'text-slate-100'
+                        : 'text-slate-800'
+                  }`}>
                     {player.name}
                   </span>
                   {isMe && (
                     <span className="text-[10px] font-semibold text-slate-400 font-mono">(You)</span>
+                  )}
+                  {isSpeaking && (
+                    <span className="flex items-end gap-0.5 h-3">
+                      <span className="w-0.5 h-2 bg-emerald-500 rounded animate-pulse" />
+                      <span className="w-0.5 h-3 bg-emerald-500 rounded animate-pulse" style={{ animationDelay: '150ms' }} />
+                      <span className="w-0.5 h-1.5 bg-emerald-500 rounded animate-pulse" style={{ animationDelay: '300ms' }} />
+                    </span>
                   )}
                 </div>
                 <div className={`flex items-center gap-1.5 text-[11px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>

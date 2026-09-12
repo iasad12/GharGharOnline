@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, Player, PlayerColor, GameMode, GridConfig, LanRoomInfo } from './types/game';
 import {
   GRID_PRESETS,
@@ -12,11 +12,26 @@ import { peerManager, PeerManager } from './network/peerManager';
 import { sound } from './logic/audio';
 import { Header } from './components/Header';
 import { Lobby } from './components/Lobby';
+import { ClaimedHomeBadge } from './components/ClaimedHomeBadge';
 import { GameBoard } from './components/GameBoard';
 import { PlayerBar } from './components/PlayerBar';
 import { GameOverModal } from './components/GameOverModal';
 import { RulesModal } from './components/RulesModal';
+import { InviteProfileModal } from './components/InviteProfileModal';
+import { voiceChatManager } from './network/voiceChat';
+import { RefreshCw } from 'lucide-react';
 import QRCode from 'qrcode';
+
+// Helper to check if player has customized their profile
+function hasCustomizedProfile(): boolean {
+  try {
+    const isSet = localStorage.getItem('ghar_ghar_profile_set') === 'true';
+    const storedName = localStorage.getItem('ghar_ghar_name');
+    return isSet && !!storedName && storedName.trim() !== '' && storedName !== 'Player 1' && storedName !== 'Player 2';
+  } catch (e) {
+    return false;
+  }
+}
 
 // Helper to generate clean 6-char room code
 function generateRoomCode(): string {
@@ -76,10 +91,24 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [lanRooms, setLanRooms] = useState<LanRoomInfo[]>([]);
 
-  // Modals
+  // Modals & Approval System
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [showQrModalInGame, setShowQrModalInGame] = useState(false);
   const [inGameQrUrl, setInGameQrUrl] = useState<string | null>(null);
+  const [pendingJoinRequest, setPendingJoinRequest] = useState<{
+    id: string;
+    name: string;
+    color: PlayerColor;
+  } | null>(null);
+  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
+
+  // Invite Profile Prompt
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [pendingInviteRoom, setPendingInviteRoom] = useState<string | null>(null);
+
+  // Voice Chat State
+  const [speakingPlayerIds, setSpeakingPlayerIds] = useState<Set<string>>(new Set());
+  const [isTalking, setIsTalking] = useState<boolean>(false);
 
   // References to keep callbacks immune to stale React closures
   const isHostRef = useRef(isHost);
@@ -111,14 +140,54 @@ export const App: React.FC = () => {
   // Persist name & color changes
   useEffect(() => {
     localStorage.setItem('ghar_ghar_name', myPlayerName);
+    if (myPlayerName && myPlayerName.trim() !== '' && myPlayerName !== 'Player 1' && myPlayerName !== 'Player 2') {
+      try {
+        localStorage.setItem('ghar_ghar_profile_set', 'true');
+      } catch (e) {}
+    }
   }, [myPlayerName]);
 
   useEffect(() => {
     localStorage.setItem('ghar_ghar_color', myColor);
   }, [myColor]);
 
+  // Voice Chat Manager initialization & callbacks
+  useEffect(() => {
+    voiceChatManager.init(myPlayerId, (msg) => {
+      peerManager.broadcast(msg);
+    });
+
+    voiceChatManager.setCallbacks((speakers) => {
+      setSpeakingPlayerIds(new Set(speakers));
+      setIsTalking(speakers.has(myPlayerIdRef.current));
+    });
+
+    return () => {
+      voiceChatManager.destroy();
+    };
+  }, [myPlayerId]);
+
+  // Sync active players into VoiceChatManager mesh
+  useEffect(() => {
+    if (gameMode === 'multiplayer') {
+      const activePlayers = gameState?.players && gameState.players.length > 0
+        ? gameState.players
+        : lobbyPlayers;
+      if (activePlayers && activePlayers.length > 0) {
+        voiceChatManager.syncPlayers(activePlayers.map(p => p.id));
+      }
+    }
+  }, [gameState?.players, lobbyPlayers, gameMode]);
+
   // Periodic LAN room scanner (every 2.5s when not in an active game)
   useEffect(() => {
+    // Once a player is in multiplayer, room discovery is no longer needed.
+    // Keeping this request alive during a game needlessly consumes Pages
+    // requests on every open client.
+    if (gameMode === 'multiplayer' || gameState?.phase === 'playing') {
+      return;
+    }
+
     const fetchRooms = () => {
       PeerManager.fetchLanRooms().then(rooms => {
         setLanRooms(rooms);
@@ -126,11 +195,11 @@ export const App: React.FC = () => {
     };
 
     fetchRooms();
-    const interval = setInterval(fetchRooms, 2500);
+    const interval = setInterval(fetchRooms, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [gameMode, gameState?.phase]);
 
-  // Check URL query parameters for ?room=XYZ -> Auto-assign Player 2 and auto-join
+  // Check URL query parameters for ?room=XYZ -> Prompt for name/color if unconfigured, or auto-join
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -140,20 +209,18 @@ export const App: React.FC = () => {
       roomCodeRef.current = formattedCode;
       setGameMode('multiplayer');
 
-      // If name is default 'Player 1', auto-assign to 'Player 2' with color 2 for joining guest
-      if (myPlayerName === 'Player 1') {
-        setMyPlayerName('Player 2');
-        myPlayerNameRef.current = 'Player 2';
-        setMyColor(PLAYER_COLORS[1]);
-        myColorRef.current = PLAYER_COLORS[1];
+      if (!hasCustomizedProfile()) {
+        // Player has not yet set name/color: prompt them with the invite setup modal!
+        setPendingInviteRoom(formattedCode);
+        setShowInviteModal(true);
+      } else {
+        // Automatically join the room with brief timeout to ensure peerManager is initialized
+        const timer = setTimeout(() => {
+          handleJoinGame(formattedCode);
+        }, 350);
+
+        return () => clearTimeout(timer);
       }
-
-      // Automatically join the room with brief timeout to ensure peerManager is initialized
-      const timer = setTimeout(() => {
-        handleJoinGame(formattedCode);
-      }, 350);
-
-      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -257,6 +324,21 @@ export const App: React.FC = () => {
           assignedColor = PLAYER_COLORS.find(c => !takenColors.includes(c)) || PLAYER_COLORS[0];
         }
 
+        // If game is actively in progress (not in lobby), require Host approval
+        if (currentState.phase !== 'lobby') {
+          peerManager.broadcast({
+            type: 'JOIN_PENDING_APPROVAL',
+            targetPlayerId: incomingPlayerId
+          });
+          setPendingJoinRequest({
+            id: incomingPlayerId,
+            name: resolvedName,
+            color: assignedColor
+          });
+          sound.playTurnNotification();
+          return;
+        }
+
         const newPlayer: Player = {
           id: incomingPlayerId,
           name: resolvedName,
@@ -289,16 +371,33 @@ export const App: React.FC = () => {
           player: newPlayer
         });
 
-        // Update LAN heartbeat with new player count immediately
-        if (roomCodeRef.current) {
+        // Update LAN heartbeat with new player count immediately (lobby only)
+        if (roomCodeRef.current && currentState.phase === 'lobby') {
           peerManager.startLanHeartbeat({
             roomId: roomCodeRef.current,
             hostName: myPlayerNameRef.current.trim() || 'Player 1',
             dotCols: selectedGridRef.current.dotCols,
             dotRows: selectedGridRef.current.dotRows,
             currentPlayers: updatedPlayers.length,
-            maxPlayers: 5
+            maxPlayers: 5,
+            status: 'waiting'
           });
+        }
+        break;
+      }
+
+      case 'JOIN_PENDING_APPROVAL': {
+        if (!isHostRef.current) {
+          if (message.targetPlayerId && message.targetPlayerId !== myPlayerIdRef.current) {
+            return;
+          }
+          if (joinTimeoutRef.current) {
+            clearTimeout(joinTimeoutRef.current);
+            joinTimeoutRef.current = null;
+          }
+          peerManager.stopJoinRetry();
+          setIsLoading(false);
+          setIsWaitingForApproval(true);
         }
         break;
       }
@@ -313,8 +412,10 @@ export const App: React.FC = () => {
             clearTimeout(joinTimeoutRef.current);
             joinTimeoutRef.current = null;
           }
+          peerManager.stopJoinRetry();
           setIsLoading(false);
-          setIsWaitingInRoom(true);
+          setIsWaitingForApproval(false);
+          setIsWaitingInRoom(message.state.phase === 'lobby');
           setErrorMessage(null);
           if (message.assignedId) setMyPlayerId(message.assignedId);
           setGameState(message.state);
@@ -334,7 +435,9 @@ export const App: React.FC = () => {
             clearTimeout(joinTimeoutRef.current);
             joinTimeoutRef.current = null;
           }
+          peerManager.stopJoinRetry();
           setIsLoading(false);
+          setIsWaitingForApproval(false);
           setErrorMessage(message.reason || 'Failed to join room.');
         }
         break;
@@ -358,6 +461,7 @@ export const App: React.FC = () => {
       }
 
       case 'PLAYER_LEFT': {
+        setPendingJoinRequest(prev => prev && prev.id === message.playerId ? null : prev);
         setLobbyPlayers(prev => {
           const next = prev.filter(p => p.id !== message.playerId);
           lobbyPlayersRef.current = next;
@@ -421,6 +525,18 @@ export const App: React.FC = () => {
       case 'REMATCH': {
         setGameState(message.state);
         stateRef.current = message.state;
+        break;
+      }
+
+      case 'VOICE_SIGNAL': {
+        if (message.toPlayerId === myPlayerIdRef.current) {
+          voiceChatManager.handleVoiceSignal(message.fromPlayerId, message.data);
+        }
+        break;
+      }
+
+      case 'VOICE_SPEAKING': {
+        voiceChatManager.handleVoiceSpeaking(message.playerId, message.isSpeaking);
         break;
       }
     }
@@ -562,7 +678,10 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleJoinGame = async (codeOverride?: string) => {
+  const handleJoinGame = async (
+    codeOverride?: string,
+    playerOverride?: { id: string; name: string; color: PlayerColor }
+  ) => {
     const raw = codeOverride || roomCode;
     const targetCode = (raw || '').trim().toUpperCase();
 
@@ -597,11 +716,13 @@ export const App: React.FC = () => {
       setIsHost(false);
       isHostRef.current = false;
 
-      await peerManager.joinRoom(targetCode, {
+      const playerInfo = playerOverride || {
         id: myPlayerIdRef.current,
         name: myPlayerNameRef.current.trim() || 'Player',
         color: myColorRef.current
-      });
+      };
+
+      await peerManager.joinRoom(targetCode, playerInfo);
     } catch (err: any) {
       if (joinTimeoutRef.current) {
         clearTimeout(joinTimeoutRef.current);
@@ -609,6 +730,55 @@ export const App: React.FC = () => {
       }
       setErrorMessage(err.message || 'Could not connect to room. Please check the code.');
       setIsLoading(false);
+    }
+  };
+
+  const handleConfirmInviteProfile = (name: string, color: PlayerColor) => {
+    setMyPlayerName(name);
+    myPlayerNameRef.current = name;
+    setMyColor(color);
+    myColorRef.current = color;
+    try {
+      localStorage.setItem('ghar_ghar_name', name);
+      localStorage.setItem('ghar_ghar_color', color);
+      localStorage.setItem('ghar_ghar_profile_set', 'true');
+    } catch (e) {}
+
+    setShowInviteModal(false);
+
+    const targetRoom = pendingInviteRoom || roomCodeRef.current;
+    if (targetRoom) {
+      handleJoinGame(targetRoom, {
+        id: myPlayerIdRef.current,
+        name,
+        color
+      });
+    }
+  };
+
+  const handleCancelInviteProfile = () => {
+    setShowInviteModal(false);
+    setPendingInviteRoom(null);
+    setRoomCode('');
+    roomCodeRef.current = '';
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  };
+
+  // Called when user clicks "Join Room" button in Lobby
+  const handleJoinFromLobby = (code?: string) => {
+    const raw = code || roomCode;
+    const targetCode = (raw || '').trim().toUpperCase();
+    if (!targetCode) {
+      setErrorMessage('Please enter a valid Room Code.');
+      return;
+    }
+    if (!hasCustomizedProfile()) {
+      setPendingInviteRoom(targetCode);
+      setShowInviteModal(true);
+    } else {
+      handleJoinGame(targetCode);
     }
   };
 
@@ -653,7 +823,74 @@ export const App: React.FC = () => {
       });
     }, 250);
 
-    syncLanHeartbeat(playersToStart.length);
+    // Stop discovery heartbeat and delete from registry so in-progress game is hidden from LAN & WAN discovery
+    peerManager.stopLanHeartbeat();
+    if (roomCodeRef.current) {
+      const code = roomCodeRef.current;
+      fetch(`/api/lan-rooms?roomId=${encodeURIComponent(code)}`, {
+        method: 'DELETE',
+        keepalive: true
+      }).catch(() => {});
+      try {
+        localStorage.removeItem('ghar_active_lan_room');
+      } catch (e) {}
+    }
+  };
+
+  const handleRejectJoin = (playerId: string) => {
+    peerManager.broadcast({
+      type: 'JOIN_REJECTED',
+      reason: 'The host declined your request to join this match.',
+      targetPlayerId: playerId
+    });
+    setPendingJoinRequest(null);
+  };
+
+  const handleApproveJoin = (req: { id: string; name: string; color: PlayerColor }) => {
+    const currentState = stateRef.current;
+    if (!currentState) {
+      setPendingJoinRequest(null);
+      return;
+    }
+
+    const currentPlayers = currentState.players;
+    if (currentPlayers.length >= 5) {
+      handleRejectJoin(req.id);
+      return;
+    }
+
+    const newPlayer: Player = {
+      id: req.id,
+      name: req.name,
+      initial: getFirstLetter(req.name),
+      color: req.color,
+      score: 0,
+      isHost: false,
+      connected: true
+    };
+
+    const updatedPlayers = [...currentPlayers, newPlayer];
+    setLobbyPlayers(updatedPlayers);
+    lobbyPlayersRef.current = updatedPlayers;
+
+    const updatedState = { ...currentState, players: updatedPlayers };
+    setGameState(updatedState);
+    stateRef.current = updatedState;
+
+    peerManager.broadcast({
+      type: 'JOIN_ACCEPTED',
+      state: updatedState,
+      assignedId: newPlayer.id,
+      targetPlayerId: req.id
+    });
+
+    peerManager.broadcast({
+      type: 'PLAYER_JOINED',
+      player: newPlayer
+    });
+
+    setPendingJoinRequest(null);
+    sound.playBoxClaimed();
   };
 
   const handleAddBot = () => {
@@ -779,13 +1016,14 @@ export const App: React.FC = () => {
         method: 'DELETE',
         keepalive: true
       }).catch(() => {});
-      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-        try {
-          navigator.sendBeacon(`/api/lan-rooms?roomId=${encodeURIComponent(code)}&action=delete`);
-        } catch (e) {}
-      }
     }
     peerManager.destroy();
+    voiceChatManager.destroy();
+    setSpeakingPlayerIds(new Set());
+    setIsTalking(false);
+    voiceChatManager.init(myPlayerIdRef.current, (msg) => {
+      peerManager.broadcast(msg);
+    });
     setGameState(null);
     stateRef.current = null;
     setIsWaitingInRoom(false);
@@ -795,6 +1033,8 @@ export const App: React.FC = () => {
     isHostRef.current = false;
     setIsLoading(false);
     setErrorMessage(null);
+    setPendingJoinRequest(null);
+    setIsWaitingForApproval(false);
     setRoomCode('');
     roomCodeRef.current = '';
 
@@ -819,10 +1059,10 @@ export const App: React.FC = () => {
   // -------------------------------------------------------------
   // MAIN VIEW RENDER
   // -------------------------------------------------------------
-  const isInRoom = isWaitingInRoom || gameState?.phase === 'playing';
+  const isInRoom = isWaitingInRoom || (!!gameState && gameState.phase !== 'lobby');
 
   return (
-    <div className={`flex flex-col h-screen w-screen overflow-hidden select-none transition-colors duration-200 ${
+    <div className={`flex flex-col h-screen h-[100dvh] w-screen overflow-hidden select-none transition-colors duration-200 ${
       darkMode ? 'bg-slate-950 text-slate-100' : 'bg-paper-100 text-slate-800'
     }`}>
       {/* Top Header */}
@@ -832,6 +1072,7 @@ export const App: React.FC = () => {
         grid={gameState?.grid || selectedGrid}
         darkMode={darkMode}
         isInRoom={isInRoom}
+        showExit={isInRoom}
         lanRooms={lanRooms}
         onJoinLanRoom={(targetRoomId) => handleJoinGame(targetRoomId)}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
@@ -857,7 +1098,7 @@ export const App: React.FC = () => {
           players={lobbyPlayers}
           isWaitingInRoom={isWaitingInRoom}
           onHostGame={handleHostGame}
-          onJoinGame={handleJoinGame}
+          onJoinGame={handleJoinFromLobby}
           onStartGame={handleStartMultiplayerGame}
           onAddBot={handleAddBot}
           onRemovePlayer={handleRemovePlayer}
@@ -883,6 +1124,7 @@ export const App: React.FC = () => {
             totalBoxes={gameState.totalBoxes}
             bonusTurnAwarded={gameState.bonusTurnAwarded}
             darkMode={darkMode}
+            speakingPlayerIds={speakingPlayerIds}
           />
 
           {/* Interactive SVG Board Canvas */}
@@ -891,6 +1133,10 @@ export const App: React.FC = () => {
             myPlayerId={gameMode === 'multiplayer' ? myPlayerId : null}
             darkMode={darkMode}
             onSelectEdge={handleSelectEdge}
+            enableVoiceChat={gameMode === 'multiplayer'}
+            isTalking={isTalking}
+            onStartTalking={() => voiceChatManager.startTalking()}
+            onStopTalking={() => voiceChatManager.stopTalking()}
           />
 
           {/* Game Over Modal */}
@@ -937,6 +1183,96 @@ export const App: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Host In-Game Join Approval Modal */}
+      {isHost && pendingJoinRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className={`rounded-3xl p-6 md:p-7 max-w-sm w-full shadow-2xl border ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-paper-300 text-slate-800'
+          }`}>
+            <div className="flex items-center gap-3 mb-4">
+              <ClaimedHomeBadge
+                initial={getFirstLetter(pendingJoinRequest.name)}
+                color={pendingJoinRequest.color}
+                darkMode={darkMode}
+                sizeClass="w-12 h-12"
+              />
+              <div>
+                <h4 className={`font-bold text-base ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                  {pendingJoinRequest.name}
+                </h4>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  wants to join this match in progress
+                </p>
+              </div>
+            </div>
+
+            <p className={`text-xs md:text-sm mb-6 p-3 rounded-xl border ${
+              darkMode ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-paper-100 border-paper-200 text-slate-700'
+            }`}>
+              A new player has requested to enter the game. If approved, they will be added to the turn rotation.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleRejectJoin(pendingJoinRequest.id)}
+                className={`flex-1 py-2.5 font-bold text-xs rounded-xl border transition-all cursor-pointer ${
+                  darkMode ? 'text-red-400 border-red-900/60 hover:bg-red-950/40' : 'text-red-600 border-red-200 hover:bg-red-50'
+                }`}
+              >
+                Decline
+              </button>
+              <button
+                onClick={() => handleApproveJoin(pendingJoinRequest)}
+                className="flex-1 py-2.5 font-bold text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition-all cursor-pointer"
+              >
+                Approve & Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Guest: Waiting for Host Approval Screen */}
+      {isWaitingForApproval && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className={`rounded-3xl p-6 md:p-8 max-w-sm w-full text-center shadow-2xl border ${
+            darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-paper-300 text-slate-800'
+          }`}>
+            <div className={`w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center border ${
+              darkMode ? 'bg-amber-950/60 border-amber-800 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-600'
+            }`}>
+              <RefreshCw className="w-7 h-7 animate-spin text-amber-500" />
+            </div>
+            <h3 className={`text-xl font-bold font-sketch mb-1.5 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+              Waiting for Host Approval
+            </h3>
+            <p className={`text-xs mb-6 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+              This match is currently in progress. A join request has been sent to the host.
+            </p>
+            <button
+              onClick={handleLeaveGame}
+              className={`w-full py-2.5 font-semibold text-xs rounded-xl border transition-all cursor-pointer ${
+                darkMode ? 'text-red-400 border-red-900/50 hover:bg-red-950/40' : 'text-red-600 border-red-200 hover:bg-red-50'
+              }`}
+            >
+              Cancel Request
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Invite Profile Setup Modal */}
+      {showInviteModal && (
+        <InviteProfileModal
+          roomCode={pendingInviteRoom || roomCode}
+          initialName={myPlayerName}
+          initialColor={myColor}
+          darkMode={darkMode}
+          onConfirm={handleConfirmInviteProfile}
+          onCancel={handleCancelInviteProfile}
+        />
       )}
     </div>
   );

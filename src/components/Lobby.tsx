@@ -24,6 +24,8 @@ import { GameMode, GridConfig, LanRoomInfo, Player, PlayerColor } from '../types
 import { GRID_PRESETS, PLAYER_COLORS, getFirstLetter } from '../logic/gameEngine';
 import { peerManager, PeerManager } from '../network/peerManager';
 import { copyToClipboard } from '../logic/clipboard';
+import { ClaimedHomeBadge } from './ClaimedHomeBadge';
+export { ClaimedHomeBadge };
 
 interface LobbyProps {
   myPlayerName: string;
@@ -102,14 +104,14 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   // Pass & Play setup
   const [hotseatPlayers, setHotseatPlayers] = useState<Array<{ name: string; color: PlayerColor }>>([
-    { name: myPlayerName || 'Player 1', color: PLAYER_COLORS[0] },
-    { name: 'Player 2', color: PLAYER_COLORS[1] }
+    { name: myPlayerName && myPlayerName !== 'Player 1' ? myPlayerName : 'Asad', color: PLAYER_COLORS[0] },
+    { name: 'Yasir', color: PLAYER_COLORS[1] }
   ]);
 
   // Bot mode setup
   const [botCount, setBotCount] = useState(1);
 
-  // Auto-scan LAN on mount and every 2.5s while in multiplayer lobby (if not driven by parent)
+  // Auto-scan LAN on mount and every 15s while in multiplayer lobby (if not driven by parent)
   useEffect(() => {
     if (propLanRooms !== undefined) return;
     if (gameMode === 'multiplayer' && !isWaitingInRoom) {
@@ -118,7 +120,7 @@ export const Lobby: React.FC<LobbyProps> = ({
         PeerManager.fetchLanRooms().then(rooms => {
           setLocalLanRooms(rooms);
         });
-      }, 2500);
+      }, 15000);
       return () => clearInterval(interval);
     }
   }, [gameMode, isWaitingInRoom, propLanRooms]);
@@ -173,21 +175,21 @@ export const Lobby: React.FC<LobbyProps> = ({
     const canStart = isHost && players.length >= 2;
 
     return (
-      <div className={`flex-1 overflow-y-auto p-4 md:p-8 flex items-center justify-center transition-colors duration-200 ${darkMode ? 'paper-bg-dark bg-slate-950' : 'paper-bg bg-paper-100'}`}>
-        <div className={`w-full max-w-xl rounded-3xl shadow-xl border-2 p-6 md:p-8 relative transition-colors duration-200 ${
+      <div className={`flex-1 overflow-y-auto pt-3 sm:pt-6 pb-16 px-3 sm:px-6 md:px-8 flex justify-center items-start transition-colors duration-200 ${darkMode ? 'paper-bg-dark bg-slate-950' : 'paper-bg bg-paper-100'}`}>
+        <div className={`w-full max-w-xl rounded-3xl shadow-xl border-2 p-4 sm:p-6 md:p-8 relative transition-colors duration-200 ${
           darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-paper-50 border-paper-300 text-slate-800'
         }`}>
           <div className={`absolute top-0 left-0 right-0 h-3 rounded-t-3xl ${darkMode ? 'bg-sky-500/40' : 'bg-amber-500/50'}`}></div>
 
           {/* Lobby Header */}
-          <div className={`flex items-center justify-between border-b pb-4 mb-6 ${darkMode ? 'border-slate-800' : 'border-paper-200'}`}>
+          <div className={`flex items-center justify-between border-b pb-3 mb-4 sm:pb-4 sm:mb-6 ${darkMode ? 'border-slate-800' : 'border-paper-200'}`}>
             <div>
               <span className={`text-xs font-bold tracking-wider uppercase ${darkMode ? 'text-sky-400' : 'text-amber-700'}`}>Online Lobby</span>
-              <h2 className={`text-2xl md:text-3xl font-bold font-sketch ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+              <h2 className={`text-xl sm:text-2xl md:text-3xl font-bold font-sketch ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
                 Waiting for Players...
               </h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="text-right hidden sm:block">
                 <span className={`text-xs font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Grid Size</span>
                 <div className={`text-sm font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>
@@ -197,7 +199,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               {onLeaveGame && (
                 <button
                   onClick={onLeaveGame}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
+                  className={`px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold rounded-xl border transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
                     darkMode ? 'text-red-400 bg-red-950/40 hover:bg-red-900/40 border-red-900' : 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200'
                   }`}
                   title="Leave Room and return to main screen"
@@ -268,12 +270,12 @@ export const Lobby: React.FC<LobbyProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-sketch text-2xl font-bold text-white shadow-inner"
-                      style={{ backgroundColor: p.color }}
-                    >
-                      {p.initial}
-                    </div>
+                    <ClaimedHomeBadge
+                      initial={p.initial}
+                      color={p.color}
+                      darkMode={darkMode}
+                      sizeClass="w-10 h-10"
+                    />
                     <div>
                       <div className={`flex items-center gap-1.5 font-bold text-sm ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
                         <span>{p.name}</span>
@@ -415,35 +417,11 @@ export const Lobby: React.FC<LobbyProps> = ({
     <div className={`flex-1 overflow-y-auto pt-3 md:pt-6 pb-20 px-3 md:px-6 flex justify-center items-start transition-colors duration-200 ${
       darkMode ? 'paper-bg-dark bg-slate-950 text-slate-100' : 'paper-bg bg-paper-100 text-slate-800'
     }`}>
-      <div className={`w-full max-w-2xl rounded-3xl shadow-xl border-2 p-4 md:p-8 relative transition-colors duration-200 ${
+      <div className={`w-full max-w-2xl rounded-3xl shadow-xl border-2 p-4 md:p-8 pt-5 md:pt-7 relative transition-colors duration-200 ${
         darkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-paper-50 border-paper-300 text-slate-800'
       }`}>
         {/* Notebook top accent line */}
         <div className={`absolute top-0 left-0 right-0 h-3 rounded-t-3xl ${darkMode ? 'bg-sky-500/40' : 'bg-red-400/50'}`}></div>
-
-        {/* Title Header - streamlined and non-intrusive */}
-        <div className={`flex items-center justify-between mb-4 pb-3 border-b ${darkMode ? 'border-slate-800' : 'border-paper-200'}`}>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl md:text-3xl">✏️</span>
-              <h1 className={`text-2xl md:text-3xl font-extrabold font-sketch tracking-wide ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                Ghar Ghar
-              </h1>
-            </div>
-            <p className={`text-[11px] md:text-xs mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-              Classic Dots & Boxes for 2 to 5 players
-            </p>
-          </div>
-          <button
-            onClick={onOpenRules}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all ${
-              darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-paper-200/80 hover:bg-paper-300 text-slate-700 border-paper-300'
-            }`}
-          >
-            <HelpCircle className="w-4 h-4" />
-            <span>Rules</span>
-          </button>
-        </div>
 
         {/* Error Alert */}
         {errorMessage && (
@@ -464,14 +442,14 @@ export const Lobby: React.FC<LobbyProps> = ({
             Your Player Profile
           </label>
           <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4">
-            {/* Stamp preview badge */}
-            <div
-              className="w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center font-sketch text-2xl md:text-3xl font-bold text-white shadow-md shrink-0 transition-colors"
-              style={{ backgroundColor: myColor }}
-              title="Your initial stamped on claimed homes"
-            >
-              {getFirstLetter(myPlayerName)}
-            </div>
+            {/* Stamp preview badge with authentic claimed home style */}
+            <ClaimedHomeBadge
+              initial={getFirstLetter(myPlayerName)}
+              color={myColor}
+              darkMode={darkMode}
+              sizeClass="w-12 h-12 md:w-14 md:h-14"
+              title="Your initial stamped inside claimed homes"
+            />
 
             {/* Name Input */}
             <div className="flex-1 w-full">
@@ -479,7 +457,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 type="text"
                 value={myPlayerName}
                 onChange={e => setMyPlayerName(e.target.value)}
-                placeholder="Enter your name..."
+                placeholder="e.g. Asad, Yasir, Kamran..."
                 maxLength={15}
                 className={`w-full px-3.5 py-2 md:py-2.5 rounded-xl border outline-none font-semibold text-sm transition-all ${
                   darkMode
@@ -926,9 +904,11 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <button
                     onClick={() => {
                       const nextColor = PLAYER_COLORS[hotseatPlayers.length];
+                      const PAKISTANI_NAMES = ['Asad', 'Yasir', 'Kamran', 'Bilal', 'Zain'];
+                      const nextName = PAKISTANI_NAMES[hotseatPlayers.length] || `Player ${hotseatPlayers.length + 1}`;
                       setHotseatPlayers([
                         ...hotseatPlayers,
-                        { name: `Player ${hotseatPlayers.length + 1}`, color: nextColor }
+                        { name: nextName, color: nextColor }
                       ]);
                     }}
                     className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
@@ -948,15 +928,16 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <div key={idx} className={`flex items-center gap-2.5 p-2 rounded-xl border ${
                     darkMode ? 'bg-slate-900 border-slate-700' : 'bg-paper-50 border-paper-200'
                   }`}>
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center font-sketch text-xl font-bold text-white shadow-inner shrink-0"
-                      style={{ backgroundColor: player.color }}
-                    >
-                      {getFirstLetter(player.name)}
-                    </div>
+                    <ClaimedHomeBadge
+                      initial={getFirstLetter(player.name)}
+                      color={player.color}
+                      darkMode={darkMode}
+                      sizeClass="w-8 h-8"
+                    />
                     <input
                       type="text"
                       value={player.name}
+                      placeholder={idx === 0 ? "e.g. Asad" : idx === 1 ? "e.g. Yasir" : "e.g. Kamran"}
                       onChange={e => {
                         const updated = [...hotseatPlayers];
                         updated[idx].name = e.target.value;

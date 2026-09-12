@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { Trophy, RotateCcw, Home, Crown, Medal } from 'lucide-react';
 import { Player } from '../types/game';
 import { sound } from '../logic/audio';
+import { ClaimedHomeBadge } from './ClaimedHomeBadge';
 
 interface GameOverModalProps {
   isOpen: boolean;
@@ -117,12 +118,12 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                       `#${index + 1}`
                     )}
                   </div>
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center font-sketch text-2xl font-bold text-white shadow-inner"
-                    style={{ backgroundColor: player.color }}
-                  >
-                    {player.initial}
-                  </div>
+                  <ClaimedHomeBadge
+                    initial={player.initial}
+                    color={player.color}
+                    darkMode={darkMode}
+                    sizeClass="w-9 h-9"
+                  />
                   <div className="text-left">
                     <div className={`font-bold text-sm ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{player.name}</div>
                     <div className={`text-[11px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>

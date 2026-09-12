@@ -71,6 +71,7 @@ export interface LanRoomInfo {
   currentPlayers: number;
   maxPlayers: number;
   lastSeen: number;
+  status?: 'waiting' | 'in_progress';
 }
 
 // Network messages passed via WebRTC peer connection
@@ -78,6 +79,7 @@ export type NetworkMessage =
   | { type: 'JOIN_REQUEST'; player: { id: string; name: string; color: PlayerColor } }
   | { type: 'JOIN_ACCEPTED'; state: GameState; assignedId: string; targetPlayerId?: string }
   | { type: 'JOIN_REJECTED'; reason: string; targetPlayerId?: string }
+  | { type: 'JOIN_PENDING_APPROVAL'; targetPlayerId?: string }
   | { type: 'PLAYER_JOINED'; player: Player }
   | { type: 'PLAYER_LEFT'; playerId: string }
   | { type: 'PLAYER_COLOR_CHANGE'; playerId: string; color: PlayerColor }
@@ -85,5 +87,7 @@ export type NetworkMessage =
   | { type: 'MAKE_MOVE'; edgeId: string; playerId: string }
   | { type: 'SYNC_STATE'; state: GameState }
   | { type: 'REMATCH'; state: GameState }
+  | { type: 'VOICE_SIGNAL'; fromPlayerId: string; toPlayerId: string; data: any }
+  | { type: 'VOICE_SPEAKING'; playerId: string; isSpeaking: boolean }
   | { type: 'PING' }
   | { type: 'PONG' };

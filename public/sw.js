@@ -1,5 +1,5 @@
 // Ghar Ghar Service Worker for Progressive Web App (PWA)
-const CACHE_NAME = 'ghar-ghar-v1';
+const CACHE_NAME = 'ghar-ghar-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -7,6 +7,7 @@ const PRECACHE_ASSETS = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
+  '/icon-maskable-512.png',
   '/apple-touch-icon.png'
 ];
 

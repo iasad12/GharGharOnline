@@ -172,6 +172,16 @@ class SoundEffects {
       // ignore
     }
   }
+
+  // Quick alert / pop sound
+  public playPop() {
+    this.playTurnNotification();
+  }
+
+  // Score chord
+  public playScore() {
+    this.playBoxClaimed();
+  }
 }
 
 export const sound = new SoundEffects();

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GameState, Player, EdgeOrientation } from '../types/game';
-import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Move, Mic } from 'lucide-react';
 import { sound } from '../logic/audio';
 
 interface GameBoardProps {
@@ -8,13 +8,21 @@ interface GameBoardProps {
   myPlayerId: string | null;
   darkMode?: boolean;
   onSelectEdge: (edgeId: string) => void;
+  enableVoiceChat?: boolean;
+  isTalking?: boolean;
+  onStartTalking?: () => void;
+  onStopTalking?: () => void;
 }
 
 export const GameBoard: React.FC<GameBoardProps> = ({
   state,
   myPlayerId,
   darkMode = false,
-  onSelectEdge
+  onSelectEdge,
+  enableVoiceChat = false,
+  isTalking = false,
+  onStartTalking,
+  onStopTalking
 }) => {
   const { grid, edges, cells, currentTurnIndex, players } = state;
   const activePlayer = players[currentTurnIndex];
@@ -139,6 +147,41 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     setIsDragging(false);
   };
 
+  // Push-to-Talk Keyboard Shortcut ('K' / 'k')
+  useEffect(() => {
+    if (!enableVoiceChat || !onStartTalking || !onStopTalking) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) {
+        return;
+      }
+      if (e.key.toLowerCase() === 'k' && !e.repeat) {
+        onStartTalking();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'k') {
+        onStopTalking();
+      }
+    };
+
+    const handleBlur = () => {
+      onStopTalking();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [enableVoiceChat, onStartTalking, onStopTalking]);
+
   // Edge click handler
   const handleEdgeClick = (edgeId: string) => {
     if (!isMyTurn) return;
@@ -161,11 +204,48 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Decorative exercise notebook red margin on the left */}
-      <div className="notebook-margin"></div>
-
       {/* Floating Viewport Controls (Bottom Right) */}
       <div className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 bg-paper-50/95 dark:bg-slate-900/95 backdrop-blur p-1.5 rounded-2xl shadow-lg border border-paper-300 dark:border-slate-700">
+        {enableVoiceChat && onStartTalking && onStopTalking && (
+          <>
+            <button
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onStartTalking();
+              }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                onStopTalking();
+              }}
+              onMouseLeave={() => {
+                if (isTalking) onStopTalking();
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                onStartTalking();
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                onStopTalking();
+              }}
+              onTouchCancel={() => {
+                if (isTalking) onStopTalking();
+              }}
+              className={`p-2 rounded-xl transition-all active:scale-95 cursor-pointer select-none flex items-center gap-1.5 ${
+                isTalking
+                  ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 shadow-lg shadow-emerald-500/40 animate-pulse'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-paper-200 dark:hover:bg-slate-800'
+              }`}
+              title={isTalking ? 'Transmitting audio! Release to mute' : 'Push to Talk (Hold K or Press & Hold)'}
+            >
+              <Mic className={`w-5 h-5 ${isTalking ? 'text-white animate-bounce' : ''}`} />
+              <span className="text-[10px] font-bold font-mono px-1 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hidden sm:inline">
+                {isTalking ? 'TALKING' : 'K'}
+              </span>
+            </button>
+            <div className="h-5 w-px bg-paper-300 dark:bg-slate-700 mx-0.5" />
+          </>
+        )}
         <button
           onClick={() => handleZoom(0.15)}
           className="p-2 text-slate-700 dark:text-slate-200 hover:bg-paper-200 dark:hover:bg-slate-800 rounded-xl transition-all active:scale-95"
@@ -244,15 +324,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       strokeWidth={1.5}
                       strokeDasharray="4 2"
                     />
-                    {/* Stamped first letter of player name */}
+                    {/* Stamped initial of player name with optical centering for cursive slant */}
                     <text
-                      x={x + SPACING / 2}
-                      y={y + SPACING / 2 + 2}
+                      x={x + SPACING / 2 - (cell.initial && cell.initial.length > 1 ? 2.8 : 3.6)}
+                      y={y + SPACING / 2 + 1}
                       textAnchor="middle"
                       dominantBaseline="central"
                       fill={cell.color || '#1e293b'}
                       fontFamily="'Caveat', cursive, sans-serif"
-                      fontSize={SPACING * 0.58}
+                      fontSize={cell.initial && cell.initial.length > 1 ? SPACING * 0.56 : SPACING * 0.68}
                       fontWeight="bold"
                       filter="url(#pencil-shadow)"
                       className="select-none pointer-events-none"

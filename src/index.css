@@ -38,28 +38,6 @@
   background-size: 24px 24px;
 }
 
-/* Left red margin line like school exercise book */
-.notebook-margin {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 48px;
-  width: 2px;
-  background-color: rgba(239, 68, 68, 0.35);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.dark .notebook-margin {
-  background-color: rgba(56, 189, 248, 0.25);
-}
-
-@media (max-width: 640px) {
-  .notebook-margin {
-    left: 20px;
-  }
-}
-
 /* Smooth zoom transition when resetting */
 .board-viewport {
   transition: transform 0.05s ease-out;

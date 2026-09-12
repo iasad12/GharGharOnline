@@ -6,6 +6,8 @@ type RoomInfo = {
   currentPlayers: number;
   maxPlayers: number;
   lastSeen: number;
+  networkIp?: string;
+  status?: 'waiting' | 'in_progress';
 };
 
 type RelayMessage = {
@@ -50,16 +52,32 @@ export class GameRoom {
   private async handleRegistry(request: Request, url: URL): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
 
+    // LAN discovery must fail closed. The Pages Function injects this value
+    // only from Cloudflare's trusted CF-Connecting-IP header.
+    const callerNetwork = request.headers.get('x-client-network')?.trim() || '';
+
     if (request.method === 'GET') {
+      if (!callerNetwork) return json({ rooms: [] });
       const entries = await this.state.storage.list<RoomInfo>({ prefix: 'room:' });
       const now = Date.now();
       const rooms: RoomInfo[] = [];
       for (const [key, room] of entries) {
-        if (now - room.lastSeen <= 8_000) {
-          rooms.push(room);
-        } else {
+        if (now - room.lastSeen > 15_000) {
           await this.state.storage.delete(key);
+          continue;
         }
+
+        // 1. Hide games in progress from public / LAN discovery
+        if (room.status === 'in_progress') {
+          continue;
+        }
+
+        // 2. Same Wi-Fi filter: only show rooms created on the exact same network IP
+        if (!room.networkIp || room.networkIp !== callerNetwork) {
+          continue;
+        }
+
+        rooms.push(room);
       }
       return json({ rooms });
     }
@@ -71,11 +89,16 @@ export class GameRoom {
     }
 
     if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+    if (!callerNetwork) {
+      // Do not publish a room to the shared registry without a trusted
+      // network identity.
+      return json({ success: true, discoverable: false });
+    }
     try {
       const body = await request.json() as Partial<RoomInfo> & { action?: string };
       const roomId = String(body.roomId || '').trim().toUpperCase();
       if (!roomId) return json({ error: 'roomId is required' }, 400);
-      if (body.action === 'delete') {
+      if (body.action === 'delete' || body.status === 'in_progress') {
         await this.state.storage.delete(`room:${roomId}`);
         return json({ success: true });
       }
@@ -86,7 +109,9 @@ export class GameRoom {
         dotRows: Number(body.dotRows) || 0,
         currentPlayers: Number(body.currentPlayers) || 1,
         maxPlayers: Number(body.maxPlayers) || 5,
-        lastSeen: Date.now()
+        lastSeen: Date.now(),
+        networkIp: callerNetwork,
+        status: body.status || 'waiting'
       } satisfies RoomInfo);
       return json({ success: true });
     } catch {

@@ -18,6 +18,15 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
       ? `room:${signalRoom.trim().toUpperCase()}`
       : 'room-registry';
 
+  const clientIp = request.headers.get('CF-Connecting-IP')?.trim() || '';
+
+  const headers = new Headers(request.headers);
+  headers.delete('x-client-network');
+  if (clientIp) {
+    headers.set('x-client-network', clientIp);
+  }
+
+  const proxiedRequest = new Request(request, { headers });
   const id = env.GAME_ROOMS.idFromName(objectName);
-  return env.GAME_ROOMS.get(id).fetch(request);
+  return env.GAME_ROOMS.get(id).fetch(proxiedRequest);
 };

@@ -3,9 +3,11 @@
   "short_name": "Ghar Ghar",
   "description": "Classic Ghar Ghar (Dots and Boxes) multiplayer paper game for 2 to 5 players across LAN & WAN.",
   "start_url": "/",
+  "scope": "/",
   "id": "/",
   "display": "standalone",
   "orientation": "any",
+  "prefer_related_applications": false,
   "background_color": "#f8f4ec",
   "theme_color": "#f8f4ec",
   "categories": ["games", "entertainment"],
@@ -29,7 +31,7 @@
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

@@ -18,6 +18,10 @@ export class PeerManager {
   private rendezvousSocket: WebSocket | null = null;
   private rendezvousPromise: Promise<boolean> | null = null;
 
+  private get isProductionWebSocketPreferred(): boolean {
+    return typeof window !== 'undefined' && window.location.protocol === 'https:';
+  }
+
   public myPeerId: string | null = null;
   public isHost: boolean = false;
   public roomId: string | null = null;
@@ -178,20 +182,22 @@ export class PeerManager {
     // Send JOIN_REQUEST immediately via LAN Relay & BroadcastChannel without waiting
     this.sendToHost(joinMsg);
 
-    // Retry sending JOIN_REQUEST every 500ms up to 20 attempts to guarantee receipt (10s)
-    if (this.retryJoinTimer) clearInterval(this.retryJoinTimer);
+    // Retry with backoff instead of sending 20 requests in 10 seconds.
+    // The host response stops this immediately via stopJoinRetry().
+    this.stopJoinRetry();
+    const retryDelays = [500, 1000, 2000, 4000, 8000];
     let attempts = 0;
-    this.retryJoinTimer = setInterval(() => {
-      attempts++;
-      if (attempts >= 20 || this.isHost) {
-        if (this.retryJoinTimer) {
-          clearInterval(this.retryJoinTimer);
-          this.retryJoinTimer = null;
-        }
-        return;
-      }
-      this.sendToHost(joinMsg);
-    }, 500);
+    const scheduleJoinRetry = () => {
+      if (attempts >= retryDelays.length || this.isHost) return;
+      const delay = retryDelays[attempts++];
+      this.retryJoinTimer = setTimeout(() => {
+        this.retryJoinTimer = null;
+        if (this.isHost) return;
+        this.sendToHost(joinMsg);
+        scheduleJoinRetry();
+      }, delay);
+    };
+    scheduleJoinRetry();
 
     const connectToHost = () => {
       if (!this.peer) return;
@@ -313,9 +319,9 @@ export class PeerManager {
       void this.connectToRendezvous();
     }
 
-    // 4. HTTP relay fallback. In production this is also handled by the
-    // Durable Object; in local development it is handled by the Vite server.
-    if (this.roomId) {
+    // 4. HTTP relay fallback. The WebSocket is the production transport;
+    // avoid duplicating every message as a Pages request when it is open.
+    if (this.roomId && (!this.isProductionWebSocketPreferred || this.rendezvousSocket?.readyState !== WebSocket.OPEN)) {
       fetch(`/api/lan-signal?roomId=${encodeURIComponent(this.roomId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,8 +350,18 @@ export class PeerManager {
     this.stopLanRelayPolling();
     this.lastRelaySeq = 0;
 
+    // Production uses the room WebSocket. Polling is retained only as a
+    // fallback while the socket is connecting or if it later disconnects.
+    if (this.isProductionWebSocketPreferred && this.rendezvousSocket?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
     this.lanRelayTimer = setInterval(async () => {
       if (!this.roomId) return;
+      if (this.isProductionWebSocketPreferred && this.rendezvousSocket?.readyState === WebSocket.OPEN) {
+        this.stopLanRelayPolling();
+        return;
+      }
       try {
         const res = await fetch(
           `/api/lan-signal?roomId=${encodeURIComponent(this.roomId)}&peerId=${encodeURIComponent(
@@ -410,7 +426,10 @@ export class PeerManager {
         const activeSocket = socket;
         this.rendezvousSocket = activeSocket;
 
-        activeSocket.onopen = () => finish(true);
+        activeSocket.onopen = () => {
+          this.stopLanRelayPolling();
+          finish(true);
+        };
         activeSocket.onmessage = (event) => {
           try {
             const envelope = JSON.parse(String(event.data));
@@ -422,6 +441,7 @@ export class PeerManager {
         activeSocket.onerror = () => finish(false);
         activeSocket.onclose = () => {
           if (this.rendezvousSocket === activeSocket) this.rendezvousSocket = null;
+          if (this.roomId) this.startLanRelayPolling();
           finish(false);
         };
       } catch (e) {
@@ -463,7 +483,7 @@ export class PeerManager {
     };
 
     report();
-    this.heartbeatTimer = setInterval(report, 2000);
+    this.heartbeatTimer = setInterval(report, 5000);
   }
 
   public stopLanHeartbeat() {
@@ -483,12 +503,14 @@ export class PeerManager {
           keepalive: true
         }).catch(() => {});
 
-        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          try {
-            navigator.sendBeacon(`/api/lan-rooms?roomId=${encodeURIComponent(code)}&action=delete`);
-          } catch (e) {}
-        }
       }
+    }
+  }
+
+  public stopJoinRetry() {
+    if (this.retryJoinTimer) {
+      clearTimeout(this.retryJoinTimer);
+      this.retryJoinTimer = null;
     }
   }
 
@@ -508,8 +530,8 @@ export class PeerManager {
         const data = await res.json();
         if (Array.isArray(data.rooms)) {
           for (const r of data.rooms) {
-            // Only keep rooms seen within the last 6 seconds
-            if (!r.lastSeen || Date.now() - r.lastSeen < 6000) {
+            // Keep rooms visible across the slower lobby heartbeat.
+            if ((!r.lastSeen || Date.now() - r.lastSeen < 12000) && r.status !== 'in_progress') {
               roomMap.set(r.roomId, r);
             }
           }
@@ -522,7 +544,7 @@ export class PeerManager {
       const stored = localStorage.getItem('ghar_active_lan_room');
       if (stored) {
         const room: LanRoomInfo = JSON.parse(stored);
-        if (Date.now() - room.lastSeen < 4000) {
+        if (Date.now() - room.lastSeen < 12000 && room.status !== 'in_progress') {
           roomMap.set(room.roomId, room);
         } else {
           localStorage.removeItem('ghar_active_lan_room');
@@ -539,10 +561,7 @@ export class PeerManager {
   public destroy() {
     this.stopLanHeartbeat();
     this.stopLanRelayPolling();
-    if (this.retryJoinTimer) {
-      clearInterval(this.retryJoinTimer);
-      this.retryJoinTimer = null;
-    }
+    this.stopJoinRetry();
 
     for (const conn of this.connections.values()) {
       try { conn.close(); } catch (e) {}
