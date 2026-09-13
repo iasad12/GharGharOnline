@@ -178,6 +178,41 @@ class SoundEffects {
     this.playTurnNotification();
   }
 
+  // Welcoming chime when a player joins the lobby
+  public playPlayerJoined() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      // Uplifting two-tone welcoming chime (F5 -> C6)
+      const notes = [
+        { f: 698.46, t: 0.0, d: 0.15 },
+        { f: 1046.50, t: 0.12, d: 0.35 }
+      ];
+
+      notes.forEach(note => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(note.f, now + note.t);
+
+        gain.gain.setValueAtTime(0.22, now + note.t);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + note.t + note.d);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + note.t);
+        osc.stop(now + note.t + note.d);
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
   // Score chord
   public playScore() {
     this.playBoxClaimed();

@@ -300,7 +300,7 @@ export const App: React.FC = () => {
         if (currentPlayers.length >= 5) {
           peerManager.broadcast({
             type: 'JOIN_REJECTED',
-            reason: 'Room is full (max 5 players).',
+            reason: 'Lobby is full (max 5 players).',
             targetPlayerId: incomingPlayerId
           });
           return;
@@ -356,6 +356,7 @@ export const App: React.FC = () => {
         const updatedState = { ...currentState, players: updatedPlayers };
         setGameState(updatedState);
         stateRef.current = updatedState;
+        sound.playPlayerJoined();
 
         // Broadcast acceptance to joining peer
         peerManager.broadcast({
@@ -422,6 +423,7 @@ export const App: React.FC = () => {
           setLobbyPlayers(message.state.players);
           lobbyPlayersRef.current = message.state.players;
           setSelectedGrid(message.state.grid);
+          sound.playPlayerJoined();
         }
         break;
       }
@@ -438,12 +440,13 @@ export const App: React.FC = () => {
           peerManager.stopJoinRetry();
           setIsLoading(false);
           setIsWaitingForApproval(false);
-          setErrorMessage(message.reason || 'Failed to join room.');
+          setErrorMessage(message.reason || 'Failed to join lobby.');
         }
         break;
       }
 
       case 'PLAYER_JOINED': {
+        sound.playPlayerJoined();
         setLobbyPlayers(prev => {
           if (prev.some(p => p.id === message.player.id)) return prev;
           const next = [...prev, message.player];
@@ -672,7 +675,7 @@ export const App: React.FC = () => {
         maxPlayers: 5
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to host room. Please try again.');
+      setErrorMessage(err.message || 'Failed to host lobby. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -686,7 +689,7 @@ export const App: React.FC = () => {
     const targetCode = (raw || '').trim().toUpperCase();
 
     if (!targetCode) {
-      setErrorMessage('Please enter a valid Room Code.');
+      setErrorMessage('Please enter a valid Lobby Code.');
       return;
     }
 
@@ -705,7 +708,7 @@ export const App: React.FC = () => {
     joinTimeoutRef.current = setTimeout(() => {
       setIsLoading(loading => {
         if (loading) {
-          setErrorMessage(`Could not reach host for room "${targetCode}". Check room code or Wi-Fi connection.`);
+          setErrorMessage(`Could not reach host for lobby "${targetCode}". Check lobby code or Wi-Fi connection.`);
           return false;
         }
         return false;
@@ -728,7 +731,7 @@ export const App: React.FC = () => {
         clearTimeout(joinTimeoutRef.current);
         joinTimeoutRef.current = null;
       }
-      setErrorMessage(err.message || 'Could not connect to room. Please check the code.');
+      setErrorMessage(err.message || 'Could not connect to lobby. Please check the code.');
       setIsLoading(false);
     }
   };
@@ -766,12 +769,12 @@ export const App: React.FC = () => {
     }
   };
 
-  // Called when user clicks "Join Room" button in Lobby
+  // Called when user clicks "Join Lobby" button in Lobby
   const handleJoinFromLobby = (code?: string) => {
     const raw = code || roomCode;
     const targetCode = (raw || '').trim().toUpperCase();
     if (!targetCode) {
-      setErrorMessage('Please enter a valid Room Code.');
+      setErrorMessage('Please enter a valid Lobby Code.');
       return;
     }
     if (!hasCustomizedProfile()) {
@@ -912,6 +915,7 @@ export const App: React.FC = () => {
 
     const updated = [...lobbyPlayers, botPlayer];
     setLobbyPlayers(updated);
+    sound.playPlayerJoined();
 
     if (gameState) {
       const updatedState = { ...gameState, players: updated };
@@ -1166,12 +1170,12 @@ export const App: React.FC = () => {
               Invite Friends to Game
             </h3>
             <p className={`text-xs mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-              Scan this QR code with any smartphone to join room <strong className={`font-mono ${darkMode ? 'text-white' : 'text-slate-900'}`}>{roomCode}</strong>
+              Scan this QR code with any smartphone to join lobby <strong className={`font-mono ${darkMode ? 'text-white' : 'text-slate-900'}`}>{roomCode}</strong>
             </p>
             <div className={`p-3 rounded-2xl inline-block border mb-4 shadow-inner ${
               darkMode ? 'bg-slate-800 border-slate-700' : 'bg-paper-50 border-paper-200'
             }`}>
-              <img src={inGameQrUrl} alt="Room QR Code" className="w-56 h-56 mx-auto rounded-lg" />
+              <img src={inGameQrUrl} alt="Lobby QR Code" className="w-56 h-56 mx-auto rounded-lg" />
             </div>
             <button
               onClick={() => setShowQrModalInGame(false)}

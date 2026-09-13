@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
     setMuted(isMute);
   };
 
-  const copyRoomLink = async () => {
+  const copyLobbyLink = async () => {
     if (!roomCode) return;
     const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
     const success = await copyToClipboard(url);
@@ -101,17 +101,17 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Center: When in Room -> Room Code pill; otherwise -> active room discovery */}
+      {/* Center: When in Lobby -> Lobby Code pill; otherwise -> active lobby discovery */}
       {isInRoom && roomCode && mode === 'multiplayer' ? (
         <div className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1 rounded-full border shadow-sm shrink-0 ${
           darkMode ? 'bg-slate-800/90 border-slate-700' : 'bg-paper-200/80 border-paper-300'
         }`}>
-          <span className={`text-xs font-semibold uppercase tracking-wider hidden sm:inline ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Room:</span>
+          <span className={`text-xs font-semibold uppercase tracking-wider hidden sm:inline ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Lobby:</span>
           <span className={`text-xs sm:text-sm font-mono font-bold tracking-wider whitespace-nowrap ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
             {roomCode}
           </span>
           <button
-            onClick={copyRoomLink}
+            onClick={copyLobbyLink}
             className={`p-1 rounded-md transition-colors ${darkMode ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 hover:text-slate-900 hover:bg-paper-300/50'}`}
             title="Copy Invite Link"
           >
@@ -147,12 +147,12 @@ export const Header: React.FC<HeaderProps> = ({
           title={
             lanRooms.length === 1
               ? `Click to join ${lanRooms[0].hostName}'s game (${lanRooms[0].roomId})`
-              : 'Click to view active online rooms'
+              : 'Click to view active online lobbies'
           }
         >
           <Wifi className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
           <span>
-            {lanRooms.length === 1 ? '1 room found' : `${lanRooms.length} rooms found`}
+            {lanRooms.length === 1 ? '1 lobby found' : `${lanRooms.length} lobbies found`}
           </span>
           {lanRooms.length === 1 ? (
             <span className={`text-[10px] uppercase font-mono px-1 py-0.2 rounded font-bold ${

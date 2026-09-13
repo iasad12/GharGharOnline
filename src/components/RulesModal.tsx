@@ -45,7 +45,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, darkMod
             <div>
               <h3 className={`font-semibold mb-1 ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>1. Take Turns Drawing Lines</h3>
               <p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>
-                Players take turns connecting two horizontally or vertically adjacent dots. Simply tap or click between any two dots to draw a pencil line.
+                Players take turns connecting two horizontally or vertically adjacent dots. Drag from any dot in the direction of your choice to steer your line, or tap between dots to connect them.
               </p>
             </div>
           </div>

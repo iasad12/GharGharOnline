@@ -202,7 +202,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   className={`px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold rounded-xl border transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
                     darkMode ? 'text-red-400 bg-red-950/40 hover:bg-red-900/40 border-red-900' : 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200'
                   }`}
-                  title="Leave Room and return to main screen"
+                  title="Leave Lobby and return to main screen"
                 >
                   <span>Leave</span>
                 </button>
@@ -210,12 +210,12 @@ export const Lobby: React.FC<LobbyProps> = ({
             </div>
           </div>
 
-          {/* Room Code Card */}
+          {/* Lobby Code Card */}
           <div className={`rounded-2xl p-4 mb-6 border flex flex-col sm:flex-row items-center justify-between gap-3 ${
             darkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-paper-200/80 border-paper-300'
           }`}>
             <div>
-              <div className={`text-xs font-semibold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>SHARE ROOM CODE</div>
+              <div className={`text-xs font-semibold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>SHARE LOBBY CODE</div>
               <div className={`text-3xl font-mono font-extrabold tracking-widest ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                 {roomCode}
               </div>
@@ -366,7 +366,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-paper-100 hover:bg-paper-200 text-slate-700 border-paper-300'
                   }`}
                 >
-                  Leave Waiting Room
+                  Leave Waiting Lobby
                 </button>
               )}
             </div>
@@ -389,11 +389,11 @@ export const Lobby: React.FC<LobbyProps> = ({
                 <div className={`p-3 rounded-2xl inline-block border mb-4 shadow-inner ${
                   darkMode ? 'bg-slate-800 border-slate-700' : 'bg-paper-50 border-paper-200'
                 }`}>
-                  <img src={qrDataUrl} alt="Room QR Code" className="w-56 h-56 mx-auto rounded-lg" />
+                  <img src={qrDataUrl} alt="Lobby QR Code" className="w-56 h-56 mx-auto rounded-lg" />
                 </div>
               )}
               <div className={`text-xs font-mono font-bold mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                Room: {roomCode}
+                Lobby: {roomCode}
               </div>
               <button
                 onClick={() => setShowQrModal(false)}
@@ -713,9 +713,9 @@ export const Lobby: React.FC<LobbyProps> = ({
                 }`}
               >
                 <Play className="w-5 h-5 fill-current" />
-                <span>Host New Room</span>
+                <span>Host New Lobby</span>
                 <span className={`text-[10px] font-normal ${darkMode ? 'text-sky-100' : 'text-amber-100'}`}>
-                  Creates room for 2-5 players
+                  Creates lobby for 2-5 players
                 </span>
               </button>
 
@@ -726,7 +726,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 <span className={`text-xs font-bold uppercase tracking-wider ${
                   darkMode ? 'text-slate-300' : 'text-slate-700'
                 }`}>
-                  Join with Room Code
+                  Join with Lobby Code
                 </span>
                 <div className="flex items-center gap-2">
                   <input
@@ -850,7 +850,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                       Auto-discovering active games on your Wi-Fi...
                     </span>
                   </div>
-                  <span>Click "Host New Room" above to start a game, or enter a Room Code!</span>
+                  <span>Click "Host New Lobby" above to start a game, or enter a Lobby Code!</span>
                 </div>
               )}
             </div>

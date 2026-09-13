@@ -61,7 +61,7 @@ export const InviteProfileModal: React.FC<InviteProfileModalProps> = ({
           </div>
           <h2 className="text-2xl font-bold font-sketch">You're Invited to Play!</h2>
           <p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-            Joining room <strong className="font-mono font-bold text-sm tracking-wider">{roomCode}</strong>
+            Joining lobby <strong className="font-mono font-bold text-sm tracking-wider">{roomCode}</strong>
           </p>
         </div>
 
